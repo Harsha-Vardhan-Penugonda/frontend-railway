@@ -97,7 +97,7 @@ export default function App() {
       <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg p-8 space-y-6">
         {/* Header Section */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-800">Railway Announcement</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Simulation of Railway Announcement</h1>
           <p className="text-gray-500 mt-2">Generate train announcements on the fly.</p>
         </div>
 
