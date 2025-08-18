@@ -19,6 +19,17 @@ export default function App() {
   const baseUrl = 'https://train-announcer-backend-1.onrender.com';
   const apiUrl = `${baseUrl}/api/generate`;
 
+  // A comprehensive list of sample train numbers from the provided images
+  const sampleTrainNumbers = [
+    12077, 12078, 12375, 12376, 12603, 12604, 12612, 12615, 12616, 12622, 
+    12655, 12656, 12659, 12660, 12664, 12703, 12709, 12710, 12711, 12712, 
+    12727, 12733, 12734, 12743, 12744, 12747, 12749, 12759, 12760, 12763, 
+    12764, 12769, 12784, 12787, 12805, 17008, 17016, 17206, 17208, 17210, 
+    17231, 17482, 17487, 17646, 17784, 17977, 18047, 18464, 18503, 18519, 
+    18638, 20677, 22604, 22642, 22832, 22849, 22852, 22859, 22880, 70458, 
+    70461, 70637, 70785, 70786, 86086
+  ].sort((a, b) => a - b); // Sorted numerically for better presentation
+
   // Effect to automatically play audio when the URL changes
   useEffect(() => {
     if (audioUrl && audioRef.current) {
@@ -150,6 +161,25 @@ export default function App() {
             {isLoading ? 'Generating...' : 'Generate Announcement'}
           </button>
         </form>
+
+        {/* Sample Train Numbers Section */}
+        <div className="pt-4 border-t border-gray-200">
+            <h3 className="text-md font-semibold text-gray-700 mb-3 text-center">Or try one of these</h3>
+            {/* Scrollable container for the train numbers */}
+            <div className="max-h-32 overflow-y-auto p-2 bg-gray-50 rounded-lg flex flex-wrap justify-center gap-2">
+                {sampleTrainNumbers.map((number) => (
+                    <button
+                        key={number}
+                        type="button"
+                        onClick={() => setTrainNumber(String(number))}
+                        className="px-3 py-1 bg-gray-200 text-gray-800 rounded-full text-sm font-medium hover:bg-blue-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    >
+                        {number}
+                    </button>
+                ))}
+            </div>
+        </div>
+
 
         {/* Response Section: Loader, Audio Player, or Error Message */}
         <div className="pt-6 text-center min-h-[60px]">
