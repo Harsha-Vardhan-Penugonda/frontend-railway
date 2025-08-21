@@ -147,7 +147,7 @@ export default function App() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-white"
             >
               <option value="Is On">Is On Platform</option>
-              <option value="Arriving">Arriving</option>
+              <option value="Arrive Shortly">Arriving</option>
               <option value="Departing">Departing</option>
             </select>
           </div>
