@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { baseUrl } from '../apiBase';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import { useDebounced } from '../hooks/useDebounced';
 import { StatTile } from '../components/dashboard/StatTile';
 import { StatusBadge, CategoryBadge } from '../components/dashboard/Badge';
 import { RequestKeyModal } from '../components/dashboard/RequestKeyModal';
@@ -20,15 +21,6 @@ const SORT_OPTIONS = [
   { value: 'durationSeconds', label: 'Duration' },
   { value: 'fileSizeBytes', label: 'File size' },
 ];
-
-function useDebounced(value, delay) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
 
 export default function DashboardPage() {
   const [search, setSearch] = useState('');
