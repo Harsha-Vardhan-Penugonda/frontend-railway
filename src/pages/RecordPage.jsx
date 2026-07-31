@@ -1,28 +1,40 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Upload } from 'lucide-react';
+import { Upload, Loader2 } from 'lucide-react';
 import { baseUrl } from '../apiBase';
 import { silenceTrimLabel } from '../utils/format';
+import { useFFmpeg } from '../hooks/useFFmpeg';
 
 export default function RecordPage() {
   const { key } = useParams();
 
   const [isRecording, setIsRecording] = useState(false);
   const [rawBlobUrl, setRawBlobUrl] = useState(null);
-  const [enhancedUrl, setEnhancedUrl] = useState(null);
-  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhancedBlob, setEnhancedBlob] = useState(null);
+  const [enhancedPreviewUrl, setEnhancedPreviewUrl] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const [micError, setMicError] = useState(null);
   const [minSilenceSeconds, setMinSilenceSeconds] = useState(0.2);
+  const [clientProcessingUnavailable, setClientProcessingUnavailable] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const rawBlobRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Browsers disagree on which container/codec MediaRecorder defaults to
-  // (and Safari in particular can misbehave with no mimeType specified at
-  // all), so pick the best one this browser actually supports ourselves.
+  const { load, loaded, loading, processing, progress, statusMessage, processAudio } = useFFmpeg();
+
+  // Preload the audio engine as soon as the page opens, so it's likely ready
+  // by the time the user finishes recording/reviewing. If the CDN it loads
+  // from is unreachable, fall back to the server doing the processing
+  // instead of leaving the user stuck with no way to save at all.
+  useEffect(() => {
+    load().catch(() => setClientProcessingUnavailable(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pickSupportedMimeType = () => {
     const candidates = [
       'audio/webm;codecs=opus',
@@ -33,11 +45,18 @@ export default function RecordPage() {
     return candidates.find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || '';
   };
 
+  const resetOutputs = () => {
+    setEnhancedBlob(null);
+    setEnhancedPreviewUrl(null);
+    setSaved(false);
+    setError(null);
+  };
+
   const startRecording = useCallback(async () => {
     setError(null);
     setMicError(null);
-    setEnhancedUrl(null);
     setRawBlobUrl(null);
+    resetOutputs();
     chunksRef.current = [];
 
     if (!window.MediaRecorder) {
@@ -46,9 +65,9 @@ export default function RecordPage() {
     }
 
     try {
-      // Our own enhance pipeline (server-side) handles noise reduction and
-      // normalization, so we ask the browser for the rawest possible capture
-      // instead of letting its own DSP fight with ours.
+      // The processing pipeline (client or server) handles noise reduction
+      // and normalization itself, so we ask the browser for the rawest
+      // possible capture instead of letting its own DSP fight with ours.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
@@ -94,39 +113,85 @@ export default function RecordPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
-    setEnhancedUrl(null);
+    resetOutputs();
     rawBlobRef.current = file;
     setRawBlobUrl(URL.createObjectURL(file));
   };
 
   const handleEnhance = async () => {
     if (!rawBlobRef.current) return;
-    setIsEnhancing(true);
+    setError(null);
+    setSaved(false);
+
+    // Fallback path: client-side engine never loaded (e.g. CDN unreachable).
+    // Upload the raw recording and let the server do the same processing.
+    if (clientProcessingUnavailable) {
+      setSaving(true);
+      try {
+        const formData = new FormData();
+        formData.append('audio', rawBlobRef.current, rawBlobRef.current.name || 'recording.webm');
+        formData.append('minSilenceSeconds', String(minSilenceSeconds));
+
+        const res = await fetch(`${baseUrl}/api/audio-clips/${encodeURIComponent(key)}/enhance`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Enhance failed (${res.status})`);
+
+        setEnhancedPreviewUrl(`${baseUrl}/api/audio-clips/${encodeURIComponent(key)}/audio?t=${Date.now()}`);
+        setSaved(true);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Normal path: process in-browser first so what's previewed is exactly
+    // what gets saved, then upload the already-processed result.
+    try {
+      if (!loaded) await load();
+      const blob = await processAudio(rawBlobRef.current, {
+        noiseReduction: 'medium',
+        silenceRemoval: true,
+        normalization: true,
+        minSilenceSeconds,
+      });
+      setEnhancedBlob(blob);
+      setEnhancedPreviewUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setError('Processing failed: ' + err.message);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!enhancedBlob) return;
+    setSaving(true);
     setError(null);
 
     try {
       const formData = new FormData();
-      formData.append('audio', rawBlobRef.current, rawBlobRef.current.name || 'recording.webm');
-      formData.append('minSilenceSeconds', String(minSilenceSeconds));
+      formData.append('audio', enhancedBlob, 'enhanced.mp3');
+      formData.append('skipProcessing', 'true');
 
       const res = await fetch(`${baseUrl}/api/audio-clips/${encodeURIComponent(key)}/enhance`, {
         method: 'POST',
         body: formData,
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Enhance failed: ${res.status} - ${text}`);
-      }
-
-      // Cache-bust so we don't get a stale cached copy of the previous recording
-      setEnhancedUrl(`${baseUrl}/api/audio-clips/${encodeURIComponent(key)}/audio?t=${Date.now()}`);
+      setSaved(true);
     } catch (err) {
       setError(err.message);
     } finally {
-      setIsEnhancing(false);
+      setSaving(false);
     }
   };
+
+  const isProcessing = loading || processing;
 
   return (
     <div className="bg-gray-100 font-sans min-h-screen p-4">
@@ -134,7 +199,10 @@ export default function RecordPage() {
         <div>
           <Link to="/admin" className="text-sm text-blue-600 hover:underline">&larr; Back to dashboard</Link>
           <h1 className="text-2xl font-bold text-gray-800 mt-2">Record: <span className="text-blue-600">{key}</span></h1>
-          <p className="text-gray-500 mt-1 text-sm">Record or upload, review, then click Enhance to clean it up and save it as the live clip.</p>
+          <p className="text-gray-500 mt-1 text-sm">Record or upload, review, enhance, then save.</p>
+          {clientProcessingUnavailable && (
+            <p className="text-xs text-amber-600 mt-1">Audio engine unavailable - falling back to server-side processing.</p>
+          )}
         </div>
 
         {micError && (
@@ -175,7 +243,7 @@ export default function RecordPage() {
 
         {rawBlobUrl && (
           <div className="border-t border-gray-200 pt-4 space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700">Review before saving</h2>
+            <h2 className="text-sm font-semibold text-gray-700">Review before enhancing</h2>
             <audio src={rawBlobUrl} controls className="w-full" />
 
             <div>
@@ -203,10 +271,11 @@ export default function RecordPage() {
 
             <button
               onClick={handleEnhance}
-              disabled={isEnhancing}
-              className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+              disabled={isProcessing || saving}
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
             >
-              {isEnhancing ? 'Enhancing...' : 'Enhance & Save'}
+              {isProcessing && <Loader2 size={16} className="animate-spin" />}
+              {loading ? 'Loading audio engine...' : processing ? `${statusMessage} (${progress}%)` : 'Enhance'}
             </button>
             <p className="text-xs text-gray-400 text-center">Not happy with it? Record again or pick a different file before enhancing.</p>
           </div>
@@ -216,10 +285,28 @@ export default function RecordPage() {
           <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">{error}</div>
         )}
 
-        {enhancedUrl && (
+        {enhancedPreviewUrl && !clientProcessingUnavailable && (
+          <div className="border-t border-gray-200 pt-4 space-y-3">
+            <h2 className="text-sm font-semibold text-gray-700">Preview enhanced result</h2>
+            <audio src={enhancedPreviewUrl} controls className="w-full" />
+            {!saved ? (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full bg-emerald-600 text-white font-semibold py-3 rounded-lg hover:bg-emerald-700 disabled:bg-emerald-300"
+              >
+                {saving ? 'Saving...' : 'Save as live clip'}
+              </button>
+            ) : (
+              <p className="text-sm font-semibold text-green-700 text-center">Saved!</p>
+            )}
+          </div>
+        )}
+
+        {enhancedPreviewUrl && clientProcessingUnavailable && saved && (
           <div className="border-t border-gray-200 pt-4 space-y-2">
             <h2 className="text-sm font-semibold text-green-700">Saved! Here's the enhanced result:</h2>
-            <audio src={enhancedUrl} controls className="w-full" />
+            <audio src={enhancedPreviewUrl} controls className="w-full" />
           </div>
         )}
       </div>
