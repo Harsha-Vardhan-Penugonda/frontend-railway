@@ -36,12 +36,16 @@ function Field({ label, id, value, onChange, options, listId, required, hint }) 
   );
 }
 
-export function TrainForm({ fieldOptions, onSubmit, submitting, submitError }) {
-  const [trainNo, setTrainNo] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [trainName, setTrainName] = useState('');
-  const [trainType, setTrainType] = useState('');
+export function TrainForm({
+  fieldOptions, onSubmit, submitting, submitError,
+  initial = null, title = 'Add a new train', submitLabel = 'Add Train', submittingLabel = 'Adding...',
+  onCancel = null, idPrefix = 'add',
+}) {
+  const [trainNo, setTrainNo] = useState(initial?.['Train No'] ?? '');
+  const [from, setFrom] = useState(initial?.['FROM'] ?? '');
+  const [to, setTo] = useState(initial?.['TO'] ?? '');
+  const [trainName, setTrainName] = useState(initial?.['Train Name'] ?? '');
+  const [trainType, setTrainType] = useState(initial?.['Train Type'] ?? '');
   const [warning, setWarning] = useState(null);
 
   const handleSubmit = (e) => {
@@ -70,31 +74,31 @@ export function TrainForm({ fieldOptions, onSubmit, submitting, submitError }) {
 
   return (
     <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-      <h2 className="font-semibold text-gray-900">Add a new train</h2>
+      <h2 className="font-semibold text-gray-900">{title}</h2>
 
-      <Field label="Train Number" id="trainNo" value={trainNo} onChange={setTrainNo} required />
+      <Field label="Train Number" id={`${idPrefix}-trainNo`} value={trainNo} onChange={setTrainNo} required />
 
       <Field
-        label="From Station" id="from" value={from} onChange={setFrom} required
-        options={fieldOptions?.stations} listId="stations-list"
+        label="From Station" id={`${idPrefix}-from`} value={from} onChange={setFrom} required
+        options={fieldOptions?.stations} listId={`${idPrefix}-stations-list`}
         hint={<MatchHint value={from} options={fieldOptions?.stations} />}
       />
 
       <Field
-        label="To Station" id="to" value={to} onChange={setTo} required
-        options={fieldOptions?.stations} listId="stations-list"
+        label="To Station" id={`${idPrefix}-to`} value={to} onChange={setTo} required
+        options={fieldOptions?.stations} listId={`${idPrefix}-stations-list-to`}
         hint={<MatchHint value={to} options={fieldOptions?.stations} />}
       />
 
       <Field
-        label="Train Name (optional)" id="trainName" value={trainName} onChange={setTrainName}
-        options={fieldOptions?.trainNames} listId="train-names-list"
+        label="Train Name (optional)" id={`${idPrefix}-trainName`} value={trainName} onChange={setTrainName}
+        options={fieldOptions?.trainNames} listId={`${idPrefix}-train-names-list`}
         hint={<MatchHint value={trainName} options={fieldOptions?.trainNames} />}
       />
 
       <Field
-        label="Train Type (optional)" id="trainType" value={trainType} onChange={setTrainType}
-        options={fieldOptions?.trainTypes} listId="train-types-list"
+        label="Train Type (optional)" id={`${idPrefix}-trainType`} value={trainType} onChange={setTrainType}
+        options={fieldOptions?.trainTypes} listId={`${idPrefix}-train-types-list`}
         hint={<MatchHint value={trainType} options={fieldOptions?.trainTypes} />}
       />
 
@@ -108,13 +112,24 @@ export function TrainForm({ fieldOptions, onSubmit, submitting, submitError }) {
         <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">{submitError}</div>
       )}
 
-      <button
-        type="submit"
-        disabled={submitting || !trainNo.trim() || !from.trim() || !to.trim()}
-        className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
-      >
-        {submitting ? 'Adding...' : 'Add Train'}
-      </button>
+      <div className="flex gap-2">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-3 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={submitting || !trainNo.trim() || !from.trim() || !to.trim()}
+          className="flex-1 bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+        >
+          {submitting ? submittingLabel : submitLabel}
+        </button>
+      </div>
     </form>
   );
 }

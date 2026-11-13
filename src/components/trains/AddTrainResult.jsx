@@ -1,14 +1,14 @@
 import { Mic, CheckCircle2 } from 'lucide-react';
 import { CategoryBadge } from '../dashboard/Badge';
 
-export function AddTrainResult({ train, audioStatus, onAddAnother }) {
+export function AddTrainResult({ train, audioStatus, onAddAnother, verb = 'added', doneLabel = 'Add another train' }) {
   const needsRecording = audioStatus.filter((a) => a.status !== 'recorded');
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
       <div className="flex items-center gap-2 text-emerald-700">
         <CheckCircle2 size={20} />
-        <h2 className="font-semibold">Train {train['Train No']} added</h2>
+        <h2 className="font-semibold">Train {train['Train No']} {verb}</h2>
       </div>
       <p className="text-sm text-gray-600">
         {train['Train Name'] ? `${train['Train Name']} - ` : ''}{train['FROM']} &rarr; {train['TO']}
@@ -51,7 +51,7 @@ export function AddTrainResult({ train, audioStatus, onAddAnother }) {
         onClick={onAddAnother}
         className="w-full px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
       >
-        Add another train
+        {doneLabel}
       </button>
     </div>
   );
