@@ -2,11 +2,21 @@ import { useState, useRef, useEffect } from 'react';
 import { baseUrl } from '../apiBase';
 import { TrainNumberLookup } from '../components/trains/TrainNumberLookup';
 
+// Announcement types that name a platform; "Running Late" and "Cancelled"
+// don't, so the platform field is hidden for them.
+const PLATFORM_TYPES = ['Is On', 'Arrive Shortly', 'Departing'];
+
 export default function GeneratorPage() {
   // State for form inputs
   const [trainNumber, setTrainNumber] = useState('');
   const [platformNumber, setPlatformNumber] = useState('');
   const [anncType, setAnncType] = useState('Is On');
+  const [delayHours, setDelayHours] = useState('');
+  const [delayMinutes, setDelayMinutes] = useState('');
+  const [expectedTime, setExpectedTime] = useState('');
+
+  const needsPlatform = PLATFORM_TYPES.includes(anncType);
+  const isLate = anncType === 'Running Late';
 
   // State for API response and UI status
   const [isLoading, setIsLoading] = useState(false);
@@ -46,7 +56,11 @@ export default function GeneratorPage() {
     setAudioUrl(null);
 
     // Basic validation
-    if (!trainNumber || !platformNumber) {
+    const missing =
+      !trainNumber ||
+      (needsPlatform && !platformNumber) ||
+      (isLate && ((!delayHours && !delayMinutes) || !expectedTime));
+    if (missing) {
         setError('Please fill in all fields.');
         setIsLoading(false);
         return;
@@ -55,8 +69,13 @@ export default function GeneratorPage() {
     const requestData = {
       // Sent as typed (not parseInt) so a leading zero isn't silently dropped.
       trainNumber: trainNumber.trim(),
-      platformNumber,
       anncType,
+      ...(needsPlatform && { platformNumber }),
+      ...(isLate && {
+        delayHours: Number(delayHours || 0),
+        delayMinutes: Number(delayMinutes || 0),
+        expectedTime,
+      }),
     };
 
     try {
@@ -70,7 +89,9 @@ export default function GeneratorPage() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API Error: ${response.status} - ${errorText}`);
+        let message = errorText;
+        try { message = JSON.parse(errorText).error || errorText; } catch { /* not JSON */ }
+        throw new Error(message);
       }
 
       const data = await response.json();
@@ -115,22 +136,6 @@ export default function GeneratorPage() {
             />
           </div>
 
-          {/* Platform Number Input */}
-          <div>
-            <label htmlFor="platformNumber" className="block text-sm font-medium text-gray-700 mb-1">
-              Platform Number
-            </label>
-            <input
-              type="text"
-              id="platformNumber"
-              value={platformNumber}
-              onChange={(e) => setPlatformNumber(e.target.value)}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-              placeholder="e.g., 4"
-            />
-          </div>
-
           {/* Announcement Type Dropdown */}
           <div>
             <label htmlFor="anncType" className="block text-sm font-medium text-gray-700 mb-1">
@@ -145,8 +150,72 @@ export default function GeneratorPage() {
               <option value="Is On">Is On Platform</option>
               <option value="Arrive Shortly">Arriving</option>
               <option value="Departing">Departing</option>
+              <option value="Running Late">Running Late</option>
+              <option value="Cancelled">Cancelled</option>
             </select>
           </div>
+
+          {/* Platform Number Input */}
+          {needsPlatform && (
+            <div>
+              <label htmlFor="platformNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                Platform Number
+              </label>
+              <input
+                type="text"
+                id="platformNumber"
+                value={platformNumber}
+                onChange={(e) => setPlatformNumber(e.target.value)}
+                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                placeholder="e.g., 4"
+              />
+            </div>
+          )}
+
+          {/* Running Late inputs */}
+          {isLate && (
+            <div className="space-y-4">
+              <div>
+                <span className="block text-sm font-medium text-gray-700 mb-1">Running late by</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-xs text-gray-500">
+                    Hours
+                    <input
+                      type="number" min="0" max="23" inputMode="numeric"
+                      value={delayHours}
+                      onChange={(e) => setDelayHours(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition mt-1 text-base text-gray-900"
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-500">
+                    Minutes
+                    <input
+                      type="number" min="0" max="59" inputMode="numeric"
+                      value={delayMinutes}
+                      onChange={(e) => setDelayMinutes(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition mt-1 text-base text-gray-900"
+                      placeholder="30"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="expectedTime" className="block text-sm font-medium text-gray-700 mb-1">
+                  Expected arrival time
+                </label>
+                <input
+                  type="time"
+                  id="expectedTime"
+                  value={expectedTime}
+                  onChange={(e) => setExpectedTime(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Submit Button */}
           <button
