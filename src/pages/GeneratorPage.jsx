@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { baseUrl } from '../apiBase';
+import { TrainNumberLookup } from '../components/trains/TrainNumberLookup';
 
 export default function GeneratorPage() {
   // State for form inputs
@@ -52,7 +53,8 @@ export default function GeneratorPage() {
     }
 
     const requestData = {
-      trainNumber: parseInt(trainNumber, 10),
+      // Sent as typed (not parseInt) so a leading zero isn't silently dropped.
+      trainNumber: trainNumber.trim(),
       platformNumber,
       anncType,
     };
@@ -106,14 +108,10 @@ export default function GeneratorPage() {
             <label htmlFor="trainNumber" className="block text-sm font-medium text-gray-700 mb-1">
               Train Number
             </label>
-            <input
-              type="number"
-              id="trainNumber"
+            <TrainNumberLookup
               value={trainNumber}
-              onChange={(e) => setTrainNumber(e.target.value)}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-              placeholder="e.g., 12711"
+              onChange={setTrainNumber}
+              inputClassName="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
             />
           </div>
 

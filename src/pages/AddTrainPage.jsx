@@ -12,12 +12,16 @@ export default function AddTrainPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [browserSearch, setBrowserSearch] = useState('');
 
+  const [optionsVersion, setOptionsVersion] = useState(0);
+
+  // Re-fetched after every add/edit so a newly introduced station, name or
+  // type shows up as a "reuse existing audio" suggestion right away.
   useEffect(() => {
     fetch(`${baseUrl}/api/trains/field-options`)
       .then((r) => r.json())
       .then(setFieldOptions)
       .catch(() => setFieldOptions({ stations: [], trainNames: [], trainTypes: [] }));
-  }, []);
+  }, [optionsVersion]);
 
   const handleSubmit = async (payload) => {
     setSubmitting(true);
@@ -38,6 +42,7 @@ export default function AddTrainPage() {
 
       setSubmitResult(data);
       setRefreshKey((k) => k + 1);
+      setOptionsVersion((v) => v + 1);
     } catch (err) {
       setSubmitError(err.message);
     } finally {
@@ -54,9 +59,9 @@ export default function AddTrainPage() {
     <div className="bg-gray-50 min-h-screen font-sans">
       <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Add Train</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Add &amp; Edit Trains</h1>
           <p className="text-gray-500 text-sm mt-0.5">
-            Add a new train and its route. Reusing an existing station/name/type keeps its audio; anything new gets queued for recording.
+            Add a new train, or click Edit on any existing train to change its number, route, name or type. Reusing an existing station/name/type keeps its audio; anything new gets queued for recording.
           </p>
         </div>
 
@@ -79,7 +84,12 @@ export default function AddTrainPage() {
           </div>
 
           <div className="lg:col-span-3">
-            <ExistingTrainsBrowser refreshKey={refreshKey} initialSearch={browserSearch} />
+            <ExistingTrainsBrowser
+              refreshKey={refreshKey}
+              initialSearch={browserSearch}
+              fieldOptions={fieldOptions}
+              onTrainUpdated={() => setOptionsVersion((v) => v + 1)}
+            />
           </div>
         </div>
       </div>

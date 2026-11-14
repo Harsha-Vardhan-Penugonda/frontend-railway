@@ -37,3 +37,11 @@ export function timeAgo(dateStr) {
   if (days < 30) return `${days}d ago`;
   return formatDate(dateStr);
 }
+
+// "12711 - Vijayawada Junction - Chennai Central - Pinakini - Superfast";
+// name and type are left out when a train doesn't have them.
+export function formatTrain(t) {
+  return [t['Train No'], t['FROM'], t['TO'], t['Train Name'], t['Train Type']]
+    .filter((v) => v !== null && v !== undefined && String(v).trim() !== '')
+    .join(' - ');
+}

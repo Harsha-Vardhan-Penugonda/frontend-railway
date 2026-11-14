@@ -10,7 +10,7 @@ export default function App() {
       <nav className="bg-gray-800 text-white text-sm px-4 py-2 flex gap-4">
         <Link to="/" className="hover:underline">Generator</Link>
         <Link to="/admin" className="hover:underline">Audio Dashboard</Link>
-        <Link to="/add-train" className="hover:underline">Add Train</Link>
+        <Link to="/add-train" className="hover:underline">Add / Edit Trains</Link>
       </nav>
       <Routes>
         <Route path="/" element={<GeneratorPage />} />

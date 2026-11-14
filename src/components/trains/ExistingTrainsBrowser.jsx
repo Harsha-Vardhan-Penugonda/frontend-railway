@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { baseUrl } from '../../apiBase';
 import { useDebounced } from '../../hooks/useDebounced';
+import { EditTrainModal } from './EditTrainModal';
 
-export function ExistingTrainsBrowser({ refreshKey, initialSearch = '' }) {
+export function ExistingTrainsBrowser({ refreshKey, initialSearch = '', fieldOptions = null, onTrainUpdated = () => {} }) {
+  const [editing, setEditing] = useState(null);
+  const [localRefresh, setLocalRefresh] = useState(0);
   const [search, setSearch] = useState(initialSearch);
   const debouncedSearch = useDebounced(search, 300);
   const [page, setPage] = useState(1);
@@ -35,7 +38,7 @@ export function ExistingTrainsBrowser({ refreshKey, initialSearch = '' }) {
       setIsLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, page, refreshKey]);
+  }, [debouncedSearch, page, refreshKey, localRefresh]);
 
   useEffect(() => { fetchTrains(); }, [fetchTrains]);
 
@@ -65,19 +68,29 @@ export function ExistingTrainsBrowser({ refreshKey, initialSearch = '' }) {
               <th className="px-3 py-2.5 font-medium">Name</th>
               <th className="px-3 py-2.5 font-medium">From &rarr; To</th>
               <th className="px-3 py-2.5 font-medium">Type</th>
+              <th className="px-3 py-2.5 font-medium"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">Loading...</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">No trains found.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No trains found.</td></tr>
             ) : items.map((t) => (
               <tr key={t._id} className="border-b border-gray-50">
                 <td className="px-3 py-2 font-medium text-gray-800">{t['Train No']}</td>
                 <td className="px-3 py-2 text-gray-600">{t['Train Name'] || '—'}</td>
                 <td className="px-3 py-2 text-gray-600">{t['FROM']} &rarr; {t['TO']}</td>
                 <td className="px-3 py-2 text-gray-600">{t['Train Type'] || '—'}</td>
+                <td className="px-3 py-2 text-right">
+                  <button
+                    onClick={() => setEditing(t)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg text-blue-700 hover:bg-blue-50"
+                    aria-label={`Edit train ${t['Train No']}`}
+                  >
+                    <Pencil size={12} /> Edit
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -105,6 +118,16 @@ export function ExistingTrainsBrowser({ refreshKey, initialSearch = '' }) {
           </button>
         </div>
       </div>
+
+      {editing && (
+        <EditTrainModal
+          key={editing._id}
+          train={editing}
+          fieldOptions={fieldOptions}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setLocalRefresh((n) => n + 1); onTrainUpdated(); }}
+        />
+      )}
     </div>
   );
 }
