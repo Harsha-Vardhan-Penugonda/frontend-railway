@@ -69,7 +69,7 @@ export default function RecordPage() {
       // and normalization itself, so we ask the browser for the rawest
       // possible capture instead of letting its own DSP fight with ours.
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
 
       const mimeType = pickSupportedMimeType();

@@ -13,15 +13,15 @@ const NOISE_REDUCTION_PRESETS = {
   aggressive: { hp: 200, lp: 10000, nr: 20 },
 };
 
-// -0.4dB is where the original digit/phrase clips (daya_chesi, kindAttention,
-// 0-9 in all 3 languages) actually peak - matching it exactly is what makes
-// everything sound consistent instead of a little quieter.
-const TARGET_PEAK_DB = -0.4;
-// Every lossy encode pass shifts the decoded peak down by ~0.4dB from what
-// the pre-encode gain math predicts (confirmed server-side by re-encoding a
-// file at 0dB gain and watching its measured peak drop anyway) - compensate
-// for it in the one encode pass below.
-const ENCODE_SHIFT_COMPENSATION_DB = 0.4;
+// Same loudness match the backend applies (train-announcer-backend/loudness.js):
+// set the clip's average level to what the existing clips use, with a limiter
+// to stop the extra gain clipping. Matching only the loudest instant left
+// app recordings up to 5dB quieter than the rest.
+const TARGET_MEAN_DB = -13.3;
+const LIMIT = 0.95;
+const MAX_GAIN_DB = 18;
+const LOUDNESS_PASSES = 3;
+const clampGain = (db) => Math.min(MAX_GAIN_DB, Math.max(-MAX_GAIN_DB, db));
 
 export function useFFmpeg() {
   const ffmpegRef = useRef(null);
@@ -92,27 +92,24 @@ export function useFFmpeg() {
     }
   }, []);
 
-  // Measures the true peak of a file already written into ffmpeg's virtual
-  // filesystem, by running volumedetect and reading its result back out of
-  // the logged output (ffmpeg.wasm doesn't return stderr from exec()).
-  const measurePeakDb = useCallback(async (filename) => {
+  // Measures a file already written into ffmpeg's virtual filesystem with
+  // volumedetect, reading the result back out of the logged output
+  // (ffmpeg.wasm doesn't return stderr from exec()). Null means silence.
+  const measureMeanDb = useCallback(async (filename) => {
     const ffmpeg = ffmpegRef.current;
     logBufferRef.current = [];
     await execOrThrow(ffmpeg, ['-i', filename, '-af', 'volumedetect', '-f', 'null', '-']);
     const combined = logBufferRef.current.join('\n');
-    const match = combined.match(/max_volume:\s*(-?[\d.]+|-inf)\s*dB/);
+    const match = combined.match(/mean_volume:\s*(-?[\d.]+|-inf)\s*dB/);
     if (!match || match[1] === '-inf') return null;
     return parseFloat(match[1]);
   }, [execOrThrow]);
 
   // minSilenceSeconds mirrors the same "how much silence to trim" knob the
   // server-side pipeline exposes - lower = more aggressive, higher = gentler.
-  // Normalization is a real gain adjustment based on a measured peak (see
-  // measurePeakDb), not loudnorm - loudnorm's single-pass EBU R128 algorithm
-  // needs several seconds of audio to work with, and these are mostly 1-2s
-  // single-word clips, so it was silently a near no-op on exactly the files
-  // that most needed it (this is what made station/train-name recordings
-  // come out noticeably quieter than the fixed phrase clips).
+  // Output is always mono: browsers often record stereo with the voice on
+  // the left channel only, which then plays at half volume next to the
+  // mono clips in a generated announcement.
   const processAudio = useCallback(
     async (audioBlob, { noiseReduction = 'medium', silenceRemoval = true, normalization = true, minSilenceSeconds = 0.2 } = {}) => {
       const ffmpeg = ffmpegRef.current;
@@ -145,25 +142,39 @@ export function useFFmpeg() {
           );
         }
 
-        await execOrThrow(ffmpeg, ['-i', 'input', '-af', stage1Filters.join(','), '-codec:a', 'libmp3lame', '-q:a', '2', '-y', 'midstage.mp3']);
+        await execOrThrow(ffmpeg, ['-i', 'input', '-af', stage1Filters.join(','), '-ac', '1', '-ar', '44100', '-c:a', 'pcm_f32le', '-y', 'midstage.wav']);
 
-        let finalFile = 'midstage.mp3';
+        let source = 'midstage.wav';
         if (normalization) {
-          setStatusMessage('Normalizing audio...');
-          const peakDb = await measurePeakDb('midstage.mp3');
-          if (peakDb !== null) {
-            const gainDb = (TARGET_PEAK_DB - peakDb) + ENCODE_SHIFT_COMPENSATION_DB;
-            await execOrThrow(ffmpeg, ['-i', 'midstage.mp3', '-af', `volume=${gainDb}dB`, '-codec:a', 'libmp3lame', '-q:a', '2', '-y', 'output.mp3']);
-            finalFile = 'output.mp3';
+          setStatusMessage('Matching loudness...');
+          const startMean = await measureMeanDb('midstage.wav');
+          if (startMean !== null) {
+            let gainDb = clampGain(TARGET_MEAN_DB - startMean);
+            for (let i = 0; i < LOUDNESS_PASSES; i++) {
+              await execOrThrow(ffmpeg, [
+                '-i', 'midstage.wav',
+                '-af', `volume=${gainDb.toFixed(2)}dB,alimiter=limit=${LIMIT}:attack=1:release=40:level=0`,
+                '-c:a', 'pcm_f32le', '-y', 'leveled.wav',
+              ]);
+              const nowMean = await measureMeanDb('leveled.wav');
+              if (nowMean === null) break;
+              const missing = TARGET_MEAN_DB - nowMean;
+              if (Math.abs(missing) < 0.3) break;
+              gainDb = clampGain(gainDb + missing);
+            }
+            source = 'leveled.wav';
           }
         }
+
+        await execOrThrow(ffmpeg, ['-i', source, '-c:a', 'libmp3lame', '-b:a', '128k', '-y', 'output.mp3']);
+        const finalFile = 'output.mp3';
 
         setStatusMessage('Finalizing...');
         const data = await ffmpeg.readFile(finalFile);
         const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
         const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
 
-        for (const f of ['input', 'midstage.mp3', 'output.mp3']) {
+        for (const f of ['input', 'midstage.wav', 'leveled.wav', 'output.mp3']) {
           try { await ffmpeg.deleteFile(f); } catch { /* may not exist */ }
         }
 
@@ -178,7 +189,7 @@ export function useFFmpeg() {
         setProcessing(false);
       }
     },
-    [measurePeakDb, execOrThrow]
+    [measureMeanDb, execOrThrow]
   );
 
   return { load, loaded, loading, processing, progress, statusMessage, processAudio };
